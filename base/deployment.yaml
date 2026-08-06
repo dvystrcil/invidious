@@ -93,11 +93,13 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
+            # D-012: right-sized from the Off-mode VPA's measured target
+            # (invidious), confirmed live 2026-08-06.
             requests:
-              cpu: 50m
-              memory: 128Mi
+              cpu: 25m
+              memory: 250Mi
             limits:
-              memory: 256Mi
+              memory: 384Mi
       restartPolicy: Always
 ---
 apiVersion: apps/v1
@@ -159,9 +161,12 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
+            # D-012: right-sized from the Off-mode VPA's measured target
+            # (invidious-companion), confirmed live 2026-08-06. Real CPU
+            # need was ~10x the initial 25m guess.
             requests:
-              cpu: 25m
-              memory: 128Mi
+              cpu: 271m
+              memory: 490Mi
             limits:
               memory: 640Mi
       volumes:
