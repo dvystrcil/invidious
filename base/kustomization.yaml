@@ -2,6 +2,7 @@ resources:
   - namespace.yaml
   - postgres.yaml
   - infisical-secret.yaml
+  - configmap.yaml
   - deployment.yaml
   - service.yaml
   - vpa.yaml
