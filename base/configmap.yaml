@@ -18,11 +18,9 @@ data:
   INVIDIOUS_POPULAR_ENABLED: "false"
   INVIDIOUS_DEFAULT_HOME: ""
   INVIDIOUS_FEED_MENU: "[]"
-  # domain/https_only/external_port + companion's public_url are required
-  # by Materialious's own docs (homelab#849) for correct absolute-URL
-  # generation -- confirmed real Config fields in config.cr, not specific
-  # to CORS (materialious-full proxies server-side, so no CORS is needed
-  # here).
+  # domain/https_only/external_port are required by Materialious's own
+  # docs (homelab#849) for correct absolute-URL generation -- confirmed
+  # real Config fields in config.cr.
   #
   # This MUST stay the real public hostname, not an internal cluster-DNS
   # name -- Materialious's own thumbnail loading (`new Image(); img.src =
@@ -35,7 +33,16 @@ data:
   INVIDIOUS_DOMAIN: "invidious.sirddail.net"
   INVIDIOUS_HTTPS_ONLY: "true"
   INVIDIOUS_EXTERNAL_PORT: "443"
-  INVIDIOUS_INVIDIOUS_COMPANION: '[{"private_url": "http://invidious-companion:8282/companion", "public_url": "https://ytvids-api.sirddail.net/companion"}]'
+  # No public_url here on purpose -- confirmed in config.cr (Config.load)
+  # that when public_url is omitted, Invidious defaults it to the
+  # relative path "/companion" and sets builtin_proxy = true, which
+  # registers real GET/POST/OPTIONS /companion/* routes on Invidious
+  # itself (routes/companion.cr) that stream-proxy straight through to
+  # private_url (headers + body forwarded verbatim, including Range for
+  # video seeking). That means companion never needs its own public
+  # hostname/HTTPRoute -- everything reaches it via
+  # https://invidious.sirddail.net/companion, which is already public.
+  INVIDIOUS_INVIDIOUS_COMPANION: '[{"private_url": "http://invidious-companion:8282/companion"}]'
 ---
 apiVersion: v1
 kind: ConfigMap
