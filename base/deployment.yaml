@@ -31,6 +31,14 @@ spec:
       labels:
         app: invidious
     spec:
+      # K8s auto-injects <SERVICE_NAME>_PORT (legacy Docker-links-style
+      # env vars) for every Service in-namespace -- since our Service is
+      # named "invidious", that's INVIDIOUS_PORT=tcp://<clusterIP>:3000,
+      # which collides with Invidious's OWN INVIDIOUS_<FIELD> config-
+      # override convention (config.cr treats any INVIDIOUS_* env var as
+      # a Config field override) and crashes the app trying to parse a
+      # URL as its `port` Int32 field. Confirmed live 2026-08-06.
+      enableServiceLinks: false
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -110,6 +118,7 @@ spec:
       labels:
         app: invidious-companion
     spec:
+      enableServiceLinks: false
       securityContext:
         runAsUser: 10001
         runAsNonRoot: true
