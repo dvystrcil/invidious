@@ -78,8 +78,19 @@ spec:
               value: ""
             - name: INVIDIOUS_FEED_MENU
               value: "[]"
+            # domain/https_only/external_port + companion's public_url are
+            # required by Materialious's own docs (homelab#849) for correct
+            # absolute-URL generation -- confirmed real Config fields in
+            # config.cr, not specific to CORS (materialious-full proxies
+            # server-side, so no CORS is needed here).
+            - name: INVIDIOUS_DOMAIN
+              value: "invidious.sirddail.net"
+            - name: INVIDIOUS_HTTPS_ONLY
+              value: "true"
+            - name: INVIDIOUS_EXTERNAL_PORT
+              value: "443"
             - name: INVIDIOUS_INVIDIOUS_COMPANION
-              value: '[{"private_url": "http://invidious-companion:8282/companion"}]'
+              value: '[{"private_url": "http://invidious-companion:8282/companion", "public_url": "https://invidious-companion.sirddail.net/companion"}]'
           livenessProbe:
             httpGet:
               path: /api/v1/stats
