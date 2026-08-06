@@ -37,7 +37,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: invidious
-          image: quay.io/invidious/invidious:v2.20260804.1
+          image: quay.io/invidious/invidious:2.20260804.1
           ports:
             - name: http
               containerPort: 3000
@@ -115,7 +115,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: invidious-companion
-          image: quay.io/invidious/invidious-companion:release-master
+          image: quay.io/invidious/invidious-companion:latest
           ports:
             - name: http
               containerPort: 8282
