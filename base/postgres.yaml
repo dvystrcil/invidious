@@ -1,0 +1,249 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: invidious-postgres-init
+  namespace: invidious
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: invidious
+    app.kubernetes.io/managed-by: argocd
+data:
+  # Real schema from iv-org/invidious's config/sql/*.sql (fetched directly
+  # from upstream, homelab#848), concatenated in the same order as
+  # docker/init-invidious-db.sh runs them (playlist_videos FKs playlists,
+  # so playlists must exist first). Adapted for PGO's execution context:
+  # upstream's `GRANT ... TO current_user` assumes the initdb.d script runs
+  # AS the app's own role (true for the vanilla postgres:14 image upstream
+  # uses) -- PGO's databaseInitSQL instead runs as the bootstrap/superuser
+  # connection BEFORE final ownership handoff (see owui-postgres.yaml's
+  # identical ALTER DATABASE ... OWNER TO pattern this mirrors), so
+  # `current_user` there would resolve to the wrong role. Replaced with the
+  # real app user explicitly.
+  init.sql: |
+    GRANT ALL ON SCHEMA public TO invidious;
+    ALTER DATABASE invidious OWNER TO invidious;
+
+    -- channels.sql
+    CREATE TABLE IF NOT EXISTS public.channels
+    (
+      id text NOT NULL,
+      author text,
+      updated timestamp with time zone,
+      deleted boolean,
+      subscribed timestamp with time zone,
+      CONSTRAINT channels_id_key UNIQUE (id)
+    );
+    GRANT ALL ON TABLE public.channels TO invidious;
+    CREATE INDEX IF NOT EXISTS channels_id_idx
+      ON public.channels USING btree (id COLLATE pg_catalog."default");
+
+    -- videos.sql
+    CREATE UNLOGGED TABLE IF NOT EXISTS public.videos
+    (
+      id text NOT NULL,
+      info text,
+      updated timestamp with time zone,
+      CONSTRAINT videos_pkey PRIMARY KEY (id)
+    );
+    GRANT ALL ON TABLE public.videos TO invidious;
+    CREATE UNIQUE INDEX IF NOT EXISTS id_idx
+      ON public.videos USING btree (id COLLATE pg_catalog."default");
+
+    -- channel_videos.sql
+    CREATE TABLE IF NOT EXISTS public.channel_videos
+    (
+      id text NOT NULL,
+      title text,
+      published timestamp with time zone,
+      updated timestamp with time zone,
+      ucid text,
+      author text,
+      length_seconds integer,
+      live_now boolean,
+      premiere_timestamp timestamp with time zone,
+      views bigint,
+      CONSTRAINT channel_videos_id_key UNIQUE (id)
+    );
+    GRANT ALL ON TABLE public.channel_videos TO invidious;
+    CREATE INDEX IF NOT EXISTS channel_videos_ucid_idx
+      ON public.channel_videos USING btree (ucid COLLATE pg_catalog."default");
+
+    -- users.sql
+    CREATE TABLE IF NOT EXISTS public.users
+    (
+      updated timestamp with time zone,
+      notifications text[],
+      subscriptions text[],
+      email text NOT NULL,
+      preferences text,
+      password text,
+      token text,
+      watched text[],
+      feed_needs_update boolean,
+      CONSTRAINT users_email_key UNIQUE (email)
+    );
+    GRANT ALL ON TABLE public.users TO invidious;
+    CREATE UNIQUE INDEX IF NOT EXISTS email_unique_idx
+      ON public.users USING btree (lower(email) COLLATE pg_catalog."default");
+
+    -- session_ids.sql
+    CREATE TABLE IF NOT EXISTS public.session_ids
+    (
+      id text NOT NULL,
+      email text,
+      issued timestamp with time zone,
+      CONSTRAINT session_ids_pkey PRIMARY KEY (id)
+    );
+    GRANT ALL ON TABLE public.session_ids TO invidious;
+    CREATE INDEX IF NOT EXISTS session_ids_id_idx
+      ON public.session_ids USING btree (id COLLATE pg_catalog."default");
+
+    -- nonces.sql
+    CREATE TABLE IF NOT EXISTS public.nonces
+    (
+      nonce text,
+      expire timestamp with time zone,
+      CONSTRAINT nonces_id_key UNIQUE (nonce)
+    );
+    GRANT ALL ON TABLE public.nonces TO invidious;
+    CREATE INDEX IF NOT EXISTS nonces_nonce_idx
+      ON public.nonces USING btree (nonce COLLATE pg_catalog."default");
+
+    -- annotations.sql
+    CREATE TABLE IF NOT EXISTS public.annotations
+    (
+      id text NOT NULL,
+      annotations xml,
+      CONSTRAINT annotations_id_key UNIQUE (id)
+    );
+    GRANT ALL ON TABLE public.annotations TO invidious;
+
+    -- playlists.sql
+    CREATE TYPE public.privacy AS ENUM ('Public', 'Unlisted', 'Private');
+    CREATE TABLE IF NOT EXISTS public.playlists
+    (
+        title text,
+        id text primary key,
+        author text,
+        description text,
+        video_count integer,
+        created timestamptz,
+        updated timestamptz,
+        privacy privacy,
+        index int8[]
+    );
+    GRANT ALL ON public.playlists TO invidious;
+
+    -- playlist_videos.sql (references playlists, must come after)
+    CREATE TABLE IF NOT EXISTS public.playlist_videos
+    (
+        title text,
+        id text,
+        author text,
+        ucid text,
+        length_seconds integer,
+        published timestamptz,
+        plid text references playlists(id),
+        index int8,
+        live_now boolean,
+        PRIMARY KEY (index,plid)
+    );
+    GRANT ALL ON TABLE public.playlist_videos TO invidious;
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pgo-invidious
+  namespace: invidious
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app.kubernetes.io/name: invidious
+    app.kubernetes.io/managed-by: argocd
+subjects:
+  - kind: ServiceAccount
+    name: pgo
+    namespace: postgres-operator
+roleRef:
+  kind: ClusterRole
+  name: postgres-operator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: invidious-postgres
+  namespace: invidious
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    reloader.stakater.com/auto: "true"
+  labels:
+    app.kubernetes.io/name: invidious
+    app.kubernetes.io/managed-by: argocd
+spec:
+  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi9-17.6-2542
+  postgresVersion: 17
+  databaseInitSQL:
+    name: invidious-postgres-init
+    key: init.sql
+  instances:
+    - name: instance1
+      replicas: 1
+      resources:
+        requests:
+          cpu: 25m
+          memory: 300Mi
+        limits:
+          memory: 400Mi
+      dataVolumeClaimSpec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+  proxy:
+    pgBouncer:
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbouncer:ubi9-1.24-2542
+      replicas: 1
+      config:
+        global:
+          pool_mode: transaction
+          max_client_conn: "50"
+          default_pool_size: "10"
+      resources:
+        requests:
+          cpu: 15m
+          memory: 128Mi
+        limits:
+          memory: 192Mi
+  backups:
+    pgbackrest:
+      repos:
+        - name: repo1
+          schedules:
+            full: "0 3 * * 0"
+            incremental: "0 3 * * 1-6"
+          volume:
+            volumeClaimSpec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 2Gi
+      repoHost:
+        resources:
+          requests:
+            cpu: 15m
+            memory: 128Mi
+          limits:
+            memory: 192Mi
+      # homelab#666: without this, a Failed backup Job never gets
+      # garbage-collected and Alertmanager's KubeJobFailed rule keeps
+      # re-firing on something already over.
+      jobs:
+        ttlSecondsAfterFinished: 86400
+  users:
+    - name: invidious
+      databases:
+        - invidious

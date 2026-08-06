@@ -1,0 +1,28 @@
+# Recommendation-only VPAs for every Deployment in this app (D-012,
+# epic homelab#455). Never auto-applies.
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: invidious
+  namespace: invidious
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: invidious
+  updatePolicy:
+    updateMode: "Off"
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: invidious-companion
+  namespace: invidious
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: invidious-companion
+  updatePolicy:
+    updateMode: "Off"

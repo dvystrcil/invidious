@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: invidious
+  labels:
+    # istio ambient enrollment (epic homelab#481) — ztunnel captures all
+    # pods transparently once the namespace carries this label.
+    istio.io/dataplane-mode: ambient

@@ -1,0 +1,161 @@
+# Real facts verified directly from upstream source before writing this
+# (adopt-third-party-container checklist, homelab#848):
+# - invidious Dockerfile: non-root uid 1000 (`adduser -u 1000 -S invidious`),
+#   tini entrypoint, port 3000, healthcheck via GET /api/v1/stats.
+# - invidious-companion Dockerfile: non-root uid 10001 (`adduser -u 10001
+#   -S appuser`), tini entrypoint, healthcheck via GET /healthz,
+#   SERVER_BASE_PATH=/companion baked in, needs a writable cache dir at
+#   /var/tmp/youtubei.js despite an otherwise read-only root filesystem.
+# - Config mechanism verified directly from src/invidious/config.cr:
+#   every top-level Config field is independently overridable via
+#   INVIDIOUS_<FIELD_UPCASED> env vars (Config.load merges these over the
+#   YAML base) -- no INVIDIOUS_CONFIG blob or init-container templating
+#   needed. related_videos/popular_enabled/feed_menu/default_home here are
+#   set to disable YouTube's algorithmic recommendation surfaces while
+#   leaving search intact (the actual goal, homelab#848).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invidious
+  namespace: invidious
+  labels:
+    app.kubernetes.io/name: invidious
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invidious
+  template:
+    metadata:
+      labels:
+        app: invidious
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: invidious
+          image: quay.io/invidious/invidious:v2.20260804.1
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: INVIDIOUS_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: invidious-postgres-pguser-invidious
+                  key: pgbouncer-uri
+            - name: INVIDIOUS_HMAC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: invidious-secrets
+                  key: INVIDIOUS_HMAC_KEY
+            - name: INVIDIOUS_INVIDIOUS_COMPANION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: invidious-secrets
+                  key: INVIDIOUS_COMPANION_KEY
+            - name: INVIDIOUS_CHECK_TABLES
+              value: "true"
+            # Algorithm-off, search-on config (the actual goal here) --
+            # every field below is a real top-level Config property,
+            # confirmed directly in src/invidious/config.cr.
+            - name: INVIDIOUS_RELATED_VIDEOS
+              value: "false"
+            - name: INVIDIOUS_POPULAR_ENABLED
+              value: "false"
+            - name: INVIDIOUS_DEFAULT_HOME
+              value: ""
+            - name: INVIDIOUS_FEED_MENU
+              value: "[]"
+            - name: INVIDIOUS_INVIDIOUS_COMPANION
+              value: '[{"private_url": "http://invidious-companion:8282/companion"}]'
+          livenessProbe:
+            httpGet:
+              path: /api/v1/stats
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/stats
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+      restartPolicy: Always
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invidious-companion
+  namespace: invidious
+  labels:
+    app.kubernetes.io/name: invidious
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: invidious-companion
+  template:
+    metadata:
+      labels:
+        app: invidious-companion
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsNonRoot: true
+      containers:
+        - name: invidious-companion
+          image: quay.io/invidious/invidious-companion:release-master
+          ports:
+            - name: http
+              containerPort: 8282
+          env:
+            - name: SERVER_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: invidious-secrets
+                  key: INVIDIOUS_COMPANION_KEY
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8282"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: youtubei-cache
+              mountPath: /var/tmp/youtubei.js
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: youtubei-cache
+          emptyDir: {}
+      restartPolicy: Always
