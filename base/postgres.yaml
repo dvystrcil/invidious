@@ -205,14 +205,18 @@ spec:
       containers:
         - name: perms-sidecar
           image: registry.access.redhat.com/ubi9/ubi:latest
-          command: ["/bin/sh", "-lc", "sleep infinity"]
+          # A one-shot postStart chown races against postgres creating
+          # pg17/ AFTER this sidecar starts (no ordering guarantee between
+          # sibling containers' postStart hooks) -- confirmed live
+          # 2026-08-06: postStart ran and correctly chowned everything
+          # that existed at that moment, but the freshly-initdb'd pg17
+          # directory still had wrong ownership because it didn't exist
+          # yet when the hook fired. Looping chown instead -- 2s is
+          # cheap and eventually-consistent regardless of creation order.
+          command: ["/bin/sh", "-lc", "while true; do chown -R 26:26 /pgdata 2>/dev/null; sleep 2; done"]
           volumeMounts:
             - mountPath: /pgdata
               name: postgres-data
-          lifecycle:
-            postStart:
-              exec:
-                command: ["/bin/sh", "-lc", "chown -R 26:26 /pgdata || true"]
           resources:
             requests:
               cpu: 15m
