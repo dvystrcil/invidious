@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/part-of: invidious
+    app.kubernetes.io/name: invidious-configmap
+    app.kubernetes.io/component: configmap
+  annotations:
+    reloader.stakater.com/auto: "true"
+  name: invidious-configmap
+  namespace: invidious
+data:
+  INVIDIOUS_CHECK_TABLES: "true"
+  # Algorithm-off, search-on config (the actual goal here) -- every field
+  # below is a real top-level Config property, confirmed directly in
+  # src/invidious/config.cr.
+  INVIDIOUS_RELATED_VIDEOS: "false"
+  INVIDIOUS_POPULAR_ENABLED: "false"
+  INVIDIOUS_DEFAULT_HOME: ""
+  INVIDIOUS_FEED_MENU: "[]"
+  # domain/https_only/external_port + companion's public_url are required
+  # by Materialious's own docs (homelab#849) for correct absolute-URL
+  # generation -- confirmed real Config fields in config.cr, not specific
+  # to CORS (materialious-full proxies server-side, so no CORS is needed
+  # here).
+  #
+  # This MUST stay the real public hostname, not an internal cluster-DNS
+  # name -- Materialious's own thumbnail loading (`new Image(); img.src =
+  # ...`, confirmed in its src/lib/images.ts) hits this value directly
+  # from the BROWSER as a native <img> load, which bypasses Materialious's
+  # fetch/XHR proxy shim entirely. An internal-only domain would break
+  # every thumbnail. The public gateway route for raw Invidious access
+  # (dvystrcil/argocd-projects, invidious Application) has to stay up for
+  # the same reason.
+  INVIDIOUS_DOMAIN: "invidious.sirddail.net"
+  INVIDIOUS_HTTPS_ONLY: "true"
+  INVIDIOUS_EXTERNAL_PORT: "443"
+  INVIDIOUS_INVIDIOUS_COMPANION: '[{"private_url": "http://invidious-companion:8282/companion", "public_url": "https://ytvids-api.sirddail.net/companion"}]'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/part-of: invidious
+    app.kubernetes.io/name: invidious-companion-configmap
+    app.kubernetes.io/component: configmap
+  annotations:
+    reloader.stakater.com/auto: "true"
+  name: invidious-companion-configmap
+  namespace: invidious
+data:
+  HOST: "0.0.0.0"
+  PORT: "8282"

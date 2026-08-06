@@ -49,6 +49,9 @@ spec:
           ports:
             - name: http
               containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: invidious-configmap
           env:
             - name: INVIDIOUS_DATABASE_URL
               valueFrom:
@@ -65,32 +68,6 @@ spec:
                 secretKeyRef:
                   name: invidious-secrets
                   key: INVIDIOUS_COMPANION_KEY
-            - name: INVIDIOUS_CHECK_TABLES
-              value: "true"
-            # Algorithm-off, search-on config (the actual goal here) --
-            # every field below is a real top-level Config property,
-            # confirmed directly in src/invidious/config.cr.
-            - name: INVIDIOUS_RELATED_VIDEOS
-              value: "false"
-            - name: INVIDIOUS_POPULAR_ENABLED
-              value: "false"
-            - name: INVIDIOUS_DEFAULT_HOME
-              value: ""
-            - name: INVIDIOUS_FEED_MENU
-              value: "[]"
-            # domain/https_only/external_port + companion's public_url are
-            # required by Materialious's own docs (homelab#849) for correct
-            # absolute-URL generation -- confirmed real Config fields in
-            # config.cr, not specific to CORS (materialious-full proxies
-            # server-side, so no CORS is needed here).
-            - name: INVIDIOUS_DOMAIN
-              value: "invidious.sirddail.net"
-            - name: INVIDIOUS_HTTPS_ONLY
-              value: "true"
-            - name: INVIDIOUS_EXTERNAL_PORT
-              value: "443"
-            - name: INVIDIOUS_INVIDIOUS_COMPANION
-              value: '[{"private_url": "http://invidious-companion:8282/companion", "public_url": "https://invidious-companion.sirddail.net/companion"}]'
           livenessProbe:
             httpGet:
               path: /api/v1/stats
@@ -141,16 +118,15 @@ spec:
           ports:
             - name: http
               containerPort: 8282
+          envFrom:
+            - configMapRef:
+                name: invidious-companion-configmap
           env:
             - name: SERVER_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: invidious-secrets
                   key: INVIDIOUS_COMPANION_KEY
-            - name: HOST
-              value: "0.0.0.0"
-            - name: PORT
-              value: "8282"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
