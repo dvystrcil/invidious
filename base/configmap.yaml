@@ -43,6 +43,36 @@ data:
   # hostname/HTTPRoute -- everything reaches it via
   # https://invidious.sirddail.net/companion, which is already public.
   INVIDIOUS_INVIDIOUS_COMPANION: '[{"private_url": "http://invidious-companion:8282/companion"}]'
+  # Fixes "the media could not be loaded" for every video (found live
+  # 2026-08-06). Full chain traced through source:
+  # - routes/api/manifest.cr's /api/manifest/dash/id/:id (what the
+  #   default "dash" quality player fetches) 302-redirects straight to
+  #   companion's own manifest endpoint whenever invidious_companion is
+  #   configured (our case) -- Invidious's own local-vs-not proxy logic
+  #   in that same file never even runs, since it's below the redirect.
+  # - Companion's dashManifest.ts independently reads its own `local`
+  #   query param and only rewrites BaseURLs to a relative
+  #   /companion/videoplayback path (proxied through Invidious's own
+  #   domain) when it's present -- otherwise it returns direct, absolute
+  #   googlevideo.com URLs, signed for COMPANION's egress IP.
+  # - The redirect forwards the ORIGINAL request's query string
+  #   verbatim, so whether `local=true` ever reaches companion depends
+  #   entirely on the initial client request -- which assets/js/watch.js
+  #   only adds when it differs from `video_data.preferences.local`,
+  #   itself server-rendered from the resolved user preferences. That
+  #   preference defaults to false, so by default the browser gets raw
+  #   googlevideo.com URLs bound to companion's IP, not its own --
+  #   Google rejects the mismatch on the actual media fetch.
+  # default_user_preferences is a real top-level Config field (a nested
+  # ConfigPreferences struct, config.cr line ~141). Setting local: true
+  # here makes proxied playback the cluster-wide default, so every
+  # client (browser-direct, Materialious) consistently gets
+  # /companion/videoplayback-relative URLs. Confirmed live end-to-end:
+  # manifest BaseURL changed from an absolute googlevideo.com URL to a
+  # relative /companion/videoplayback path, and fetching real byte
+  # ranges through that path returned actual MP4 data (`ftypdash`
+  # header) via the full invidious -> companion -> googlevideo chain.
+  INVIDIOUS_DEFAULT_USER_PREFERENCES: '{"local": true}'
 ---
 apiVersion: v1
 kind: ConfigMap
