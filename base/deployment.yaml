@@ -82,6 +82,8 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+          # D-012 (VPA epic homelab#455): requests right-sized from the
+          # Off-mode VPA's measured target.
           resources:
             # D-012: right-sized from the Off-mode VPA's measured target
             # (invidious), confirmed live 2026-08-06.
@@ -151,13 +153,15 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+          # D-012 (VPA epic homelab#455): requests right-sized from the
+          # Off-mode VPA's measured target.
           resources:
             # D-012: right-sized from the Off-mode VPA's measured target
             # (invidious-companion), confirmed live 2026-08-06. Real CPU
             # need was ~10x the initial 25m guess.
             requests:
-              cpu: 271m
-              memory: 490Mi
+              cpu: 247m
+              memory: 561Mi
             limits:
               memory: 640Mi
       volumes:
