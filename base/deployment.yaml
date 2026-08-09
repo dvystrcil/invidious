@@ -21,6 +21,8 @@ metadata:
   labels:
     app.kubernetes.io/name: invidious
     app.kubernetes.io/managed-by: argocd
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   selector:
@@ -98,6 +100,8 @@ metadata:
   labels:
     app.kubernetes.io/name: invidious
     app.kubernetes.io/managed-by: argocd
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   selector:
