@@ -160,7 +160,7 @@ spec:
             # (invidious-companion), confirmed live 2026-08-06. Real CPU
             # need was ~10x the initial 25m guess.
             requests:
-              cpu: 247m
+              cpu: 25m
               memory: 561Mi
             limits:
               memory: 640Mi
