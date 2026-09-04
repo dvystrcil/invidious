@@ -10,6 +10,14 @@ metadata:
   name: invidious-configmap
   namespace: invidious
 data:
+  # Debug so RefreshChannelsJob logs each cycle ("Refreshing all channels",
+  # "Spawning fiber"). RefreshFeedsJob logs almost nothing at any level, so
+  # this does not show that job directly -- it shows whether the PROCESS and
+  # its job scheduler are still alive while feeds stop updating. That
+  # distinction is what iv-org/invidious#3646 has never had: eleven "me too"
+  # comments since 2023, no evidence isolating the failure to one fiber.
+  # Revert to Info once the cause is identified.
+  INVIDIOUS_LOG_LEVEL: "Debug"
   INVIDIOUS_CHECK_TABLES: "true"
   # Algorithm-off, search-on config (the actual goal here) -- every field
   # below is a real top-level Config property, confirmed directly in

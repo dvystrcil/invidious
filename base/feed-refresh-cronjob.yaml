@@ -87,6 +87,43 @@ spec:
                   # never refresh if this were pinned to one.
                   COUNT=$(psql "$PGURI" -tAc \
                     "select count(*) from pg_matviews where matviewname like 'subscriptions\_%'")
+
+                  # --- Diagnosis, measured BEFORE we refresh anything -------
+                  #
+                  # This is what turns the workaround into an instrument.
+                  # Upstream's RefreshFeedsJob clears `feed_needs_update`;
+                  # this CronJob never touches it. So the flag stays a clean,
+                  # uncontaminated read on whether that job is still alive:
+                  #
+                  #   alive  cleared within ~5s of new videos -> flag false
+                  #   dead   nothing clears it                -> flag true
+                  #
+                  # DRIFT is the same question from the data side: how far the
+                  # feed had fallen behind before we stepped in. Both must be
+                  # sampled BEFORE the REFRESH below, or we measure our own
+                  # work instead of the job's.
+                  #
+                  # A single flag=1 can just be a video that landed seconds
+                  # ago. The signal is a STREAK across runs -- iv-org/invidious#3646
+                  # has had eleven "me too" comments since 2023 and no
+                  # timestamp for when the job dies. This produces one.
+                  FLAG=$(psql "$PGURI" -tAc \
+                    "select count(*) from users where feed_needs_update = true")
+                  # Worst drift across ALL subscription views, discovered the
+                  # same way the refresh discovers them. Naming one view here
+                  # would contradict the comment above it and would report a
+                  # second account as permanently healthy.
+                  NEWEST=$(psql "$PGURI" -tAc \
+                    "select coalesce(extract(epoch from max(published))::bigint, 0) from channel_videos")
+                  DRIFT=0
+                  for MV in $(psql "$PGURI" -tAc \
+                      "select matviewname from pg_matviews where matviewname like 'subscriptions\_%'"); do
+                    MVNEWEST=$(psql "$PGURI" -tAc \
+                      "select coalesce(extract(epoch from max(published))::bigint, 0) from \"$MV\"")
+                    D=$((NEWEST - MVNEWEST))
+                    [ "$D" -gt "$DRIFT" ] && DRIFT=$D || true
+                  done
+
                   psql "$PGURI" -v ON_ERROR_STOP=1 -c "
                     DO \$\$
                     DECLARE mv text;
@@ -101,7 +138,12 @@ spec:
                   # Completion marker. A CronJob that dies quietly reproduces
                   # the exact defect it exists to cover, so "ran and refreshed
                   # nothing" must be distinguishable from "never ran".
-                  echo "FEED-REFRESH-COMPLETE matviews=${COUNT}"
+                  #
+                  # flag_stuck / drift_seconds are about UPSTREAM's job, not
+                  # this one. drift_seconds=-1 means the per-user view was not
+                  # found, which is a different fault from "no drift".
+                  echo "FEED-REFRESH-COMPLETE matviews=${COUNT}" \
+                       "flag_stuck=${FLAG} drift_seconds=${DRIFT}"
               resources:
                 requests:
                   cpu: 10m
