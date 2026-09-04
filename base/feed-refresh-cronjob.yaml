@@ -1,0 +1,110 @@
+# Keep the subscription feed current when Invidious' own job stops doing it.
+#
+# THE BUG THIS WORKS AROUND
+#
+# Invidious materialises each user's subscription feed into
+# `subscriptions_<sha256(email)>`. RefreshChannelsJob fetches new videos into
+# `channel_videos`, sets `users.feed_needs_update`, and RefreshFeedsJob is
+# meant to REFRESH the matview and clear the flag.
+#
+# RefreshFeedsJob dies silently after some days. Measured 2026-09-04 on a pod
+# that had been up 7 days:
+#
+#   matview        562 rows, newest 2026-08-29 17:00:14   <- what the feed showed
+#   channel_videos 562 rows, newest 2026-09-04 00:05:13   <- what had been fetched
+#
+# Six days of drift, 36 invisible videos, and `feed_needs_update` stuck true
+# the whole time. On a freshly restarted pod the same flag clears in under 30
+# seconds and the matview refreshes — so the job works, then stops, and only
+# a restart brings it back. That is why the family kept falling back to
+# YouTube: the fix was "restart the pod", which nobody should have to know.
+#
+# WHY A CRONJOB RATHER THAN A FIX IN INVIDIOUS
+#
+# The refresh is one cheap SQL statement (measured: 1.07s for 562 rows) and
+# is exactly what Invidious itself runs. Doing it on a clock makes the feed
+# correct regardless of whether the in-process job is alive, which is the
+# property that actually matters to a reader. It does NOT paper over the
+# upstream defect -- that is tracked in homelab#1243 -- it just stops the
+# household depending on it.
+#
+# The CronJob is idempotent: refreshing an already-fresh matview is a no-op
+# costing ~1s, so a duplicate or overlapping run is harmless.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: invidious-feed-refresh
+  namespace: invidious
+  labels:
+    app.kubernetes.io/name: invidious-feed-refresh
+    app.kubernetes.io/part-of: invidious
+spec:
+  # Every 15 minutes. RefreshChannelsJob polls YouTube roughly that often, so
+  # a shorter interval would mostly refresh views that nothing has changed.
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: invidious-feed-refresh
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 26
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: refresh
+              image: postgres:18.1-alpine
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              env:
+                # PGO publishes a ready-made connection URI. Using it rather
+                # than assembling host/user/password by hand means a rotation
+                # or a failover cannot leave this holding a stale fragment.
+                - name: PGURI
+                  valueFrom:
+                    secretKeyRef:
+                      name: invidious-postgres-pguser-invidious
+                      key: uri
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  # Discover the views rather than hardcoding the hash: the
+                  # name is sha256(email), so a second account would silently
+                  # never refresh if this were pinned to one.
+                  COUNT=$(psql "$PGURI" -tAc \
+                    "select count(*) from pg_matviews where matviewname like 'subscriptions\_%'")
+                  psql "$PGURI" -v ON_ERROR_STOP=1 -c "
+                    DO \$\$
+                    DECLARE mv text;
+                    BEGIN
+                      FOR mv IN
+                        SELECT matviewname FROM pg_matviews
+                        WHERE matviewname LIKE 'subscriptions\_%'
+                      LOOP
+                        EXECUTE format('REFRESH MATERIALIZED VIEW %I', mv);
+                      END LOOP;
+                    END \$\$;"
+                  # Completion marker. A CronJob that dies quietly reproduces
+                  # the exact defect it exists to cover, so "ran and refreshed
+                  # nothing" must be distinguishable from "never ran".
+                  echo "FEED-REFRESH-COMPLETE matviews=${COUNT}"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
