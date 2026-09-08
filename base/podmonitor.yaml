@@ -1,0 +1,28 @@
+# Scrape the pgMonitor exporter that spec.monitoring turns on (homelab#1280).
+#
+# A PodMonitor rather than a ServiceMonitor: PGO exposes the exporter on the
+# instance pods and creates no dedicated exporter Service, so selecting on the
+# operator's own cluster label is the direct route.
+#
+# The `release: prometheus` label is LOAD-BEARING. This cluster's Prometheus
+# selects with matchLabels {release: prometheus} and an empty namespace
+# selector, so a monitor without it is silently ignored -- immich/immich-server
+# has carried a ServiceMonitor for 256 days that was never scraped for exactly
+# this reason (homelab#1293). The object reads correctly in `kubectl get` and
+# does nothing.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: invidious-postgres-exporter
+  namespace: invidious
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      postgres-operator.crunchydata.com/cluster: invidious-postgres
+  podMetricsEndpoints:
+    - port: exporter
+      path: /metrics
+      interval: 30s
