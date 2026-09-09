@@ -1,6 +1,7 @@
 resources:
   - namespace.yaml
   - postgres.yaml
+  - podmonitor.yaml
   - infisical-secret.yaml
   - configmap.yaml
   - deployment.yaml

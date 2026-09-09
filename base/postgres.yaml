@@ -270,6 +270,31 @@ spec:
       # re-firing on something already over.
       jobs:
         ttlSecondsAfterFinished: 86400
+  # ------------------------------------------------------------------ metrics
+  # homelab#1280 AC3. All seven PGO clusters ran with `spec.monitoring: null`,
+  # so Prometheus held ZERO Postgres series -- no archiver stats, no
+  # replication lag, no connection counts. obico proved the cost: WAL
+  # archiving broke for three days (homelab#1278) while pg_stat_archiver read
+  # archived_count=0, failed_count=2751 and nothing looked.
+  #
+  # No `image` on purpose: the operator substitutes RELATED_IMAGE_PGEXPORTER,
+  # so the exporter tracks the operator rather than becoming a pin that drifts
+  # out of step with it. `exporter` has no required fields in the CRD.
+  #
+  # Memory limit only. Unbounded memory is a node-killer, and D-022
+  # (homelab#1211) removes CPU limits -- a CFS quota on a sidecar scraping
+  # every 15s would throttle it against idle CPU. Measured on obico after a
+  # day: cpu=1m mem=7Mi.
+  monitoring:
+    pgmonitor:
+      exporter:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+
   users:
     - name: invidious
       databases:
