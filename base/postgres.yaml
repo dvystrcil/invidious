@@ -246,6 +246,25 @@ spec:
           memory: 192Mi
   backups:
     pgbackrest:
+      # The sanctioned "take a backup now" lever:
+      #
+      #   kubectl annotate postgrescluster/invidious-postgres -n invidious \
+      #     postgres-operator.crunchydata.com/pgbackrest-backup="$(date +%F-%H%M)"
+      #
+      # PGO then runs it as a proper Job. WITHOUT this stanza that
+      # annotation does nothing, and the only way to take an out-of-schedule
+      # backup is `kubectl exec` into the repo host and run pgbackrest by
+      # hand -- which on 2026-09-08 orphaned a process against an NFS mount
+      # whose pool was mid-resilver and left a partial backup to clean up.
+      # A Job cannot be orphaned by a dropped exec.
+      #
+      # --type=full because the case this exists for is "the schedule
+      # missed or failed and I want a known-good base now", not another
+      # incremental onto a chain whose base may be the problem.
+      manual:
+        repoName: repo1
+        options:
+          - --type=full
       repos:
         - name: repo1
           schedules:
