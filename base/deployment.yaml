@@ -159,11 +159,28 @@ spec:
             # D-012: right-sized from the Off-mode VPA's measured target
             # (invidious-companion), confirmed live 2026-08-06. Real CPU
             # need was ~10x the initial 25m guess.
+            #
+            # RE-SIZED after an OOMKill (homelab#1387). exit 137,
+            # reason OOMKilled, 2026-09-17T12:55:10Z -- one of only two
+            # containers killed cluster-wide in 30 days, and the 640Mi limit
+            # sat at 1.07x its observed peak.
+            #
+            # The sampled peak read 598Mi, BELOW the limit, which is the
+            # trap worth naming: container_memory_working_set_bytes is
+            # scraped every 30s, so a spike that lasts less than a scrape
+            # interval never appears. The OOMKill is direct evidence the true
+            # peak reached 640Mi even though no sample did. An OOMKill
+            # outranks the metric -- the kernel saw what Prometheus missed.
+            #
+            # So the request is set to the value we KNOW it reached rather
+            # than the value we happened to sample, and the limit to 2x that,
+            # per MEM_LIMIT_HEADROOM in homelab's bin/vpa-rightsize.py.
+            # cpu 100m from a measured 65m peak; no CPU limit, per D-022.
             requests:
-              cpu: 25m
-              memory: 561Mi
-            limits:
+              cpu: 100m
               memory: 640Mi
+            limits:
+              memory: 1280Mi
       volumes:
         - name: youtubei-cache
           emptyDir: {}
