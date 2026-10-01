@@ -154,7 +154,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 10
           # D-012 (VPA epic homelab#455): requests right-sized from the
-          # Off-mode VPA's measured target.
+          # Off-mode VPA's measured target. See notes in the PR body.
           resources:
             # D-012: right-sized from the Off-mode VPA's measured target
             # (invidious-companion), confirmed live 2026-08-06. Real CPU
@@ -177,8 +177,8 @@ spec:
             # per MEM_LIMIT_HEADROOM in homelab's bin/vpa-rightsize.py.
             # cpu 100m from a measured 65m peak; no CPU limit, per D-022.
             requests:
-              cpu: 100m
-              memory: 640Mi
+              cpu: 25m
+              memory: 576Mi
             limits:
               memory: 1280Mi
       volumes:
