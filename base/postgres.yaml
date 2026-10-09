@@ -184,6 +184,14 @@ metadata:
 spec:
   image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi9-17.6-2542
   postgresVersion: 17
+  # homelab#433 AC6 / architecture/patroni-failsafe.md. Patroni's DCS is the
+  # Kubernetes API; with defaults a leader that loses it for ~10 s demotes to
+  # read-only (the 2026-07-10 n8n outage). This cluster has one member, so
+  # that is a plain outage. failsafe_mode keeps the leader serving while it
+  # can reach every member's REST API (:8008) -- trivially true here.
+  patroni:
+    dynamicConfiguration:
+      failsafe_mode: true
   databaseInitSQL:
     name: invidious-postgres-init
     key: init.sql
