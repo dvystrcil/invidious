@@ -177,8 +177,8 @@ spec:
             # per MEM_LIMIT_HEADROOM in homelab's bin/vpa-rightsize.py.
             # cpu 100m from a measured 65m peak; no CPU limit, per D-022.
             requests:
-              cpu: 25m
-              memory: 576Mi
+              cpu: 224m
+              memory: 640Mi
             limits:
               memory: 1280Mi
       volumes:
