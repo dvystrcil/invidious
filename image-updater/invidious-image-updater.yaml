@@ -1,0 +1,29 @@
+# Enrolled via the image-updater-apps ApplicationSet in
+# dvystrcil/argocd-projects (argocd-image-writer/image-updater-apps.yaml).
+#
+# Upstream publishes calver-in-semver tags (2.YYYYMMDD.N) plus per-arch
+# variants (2.YYYYMMDD.N-arm64, -amd64) and moving tags (latest, master).
+# allowTags keeps only the multi-arch release tags; pinning the leading "2."
+# means a future major (3.x) needs a deliberate human bump, not an auto-sync.
+#
+# No spec.namespace: not in the CRD schema, and ServerSideApply rejects the
+# whole patch on first edit (homelab#1421).
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: invidious-iu
+spec:
+  applicationRefs:
+    - namePattern: "invidious"
+      images:
+        - alias: "invidious"
+          imageName: "quay.io/invidious/invidious"
+          commonUpdateSettings:
+            updateStrategy: "semver"
+            allowTags: 'regexp:^2\.\d{8}\.\d+$'
+      writeBackConfig:
+        method: "git"
+        gitConfig:
+          repository: "https://github.com/dvystrcil/invidious.git"
+          branch: "main"
+          writeBackTarget: "kustomization:/overlays"
