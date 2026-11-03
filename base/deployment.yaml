@@ -47,7 +47,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: invidious
-          image: quay.io/invidious/invidious:2.20260804.1
+          image: quay.io/invidious/invidious:2.20261103.0
           ports:
             - name: http
               containerPort: 3000
