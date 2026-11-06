@@ -1,0 +1,197 @@
+# CloudNativePG cluster for invidious (argocd-projects#310 AC4, D-034).
+#
+# PR A of the runbook (homelab architecture/cnpg-migration-runbook.md):
+# a CNPG Cluster with the SAME name as the PGO PostgresCluster in
+# postgres.yaml, filled by a logical import (pg_dump/pg_restore) from the PGO
+# primary. The two operators' objects don't collide: PGO owns
+# invidious-postgres-{primary,ha,pgbouncer,...}, CNPG owns
+# invidious-postgres-{rw,ro,r,app}. The app stays scaled to 0 in this PR so
+# the import sees no writes; PR B repoints it at invidious-postgres-app and
+# scales it up; PR C removes the PGO cluster after the soak.
+#
+# No Pooler (decided 2026-11-06): one app connection plus a 15-min CronJob,
+# so PgBouncer pools nothing here. PR B points both at the `uri` key (-rw).
+
+# Versity GW S3 key for the Barman Cloud plugin (D-035), from the same
+# Infisical pair the in-cluster PITR test used. Orphan: deleting this CR must
+# not take the Secret with it while WAL is still being archived.
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: invidious-postgres-versity-s3
+  namespace: invidious
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  hostAPI: http://infisical-infisical-standalone-infisical.infisical.svc.cluster.local:8080/api
+  resyncInterval: 60
+  authentication:
+    universalAuth:
+      secretsScope:
+        projectSlug: homelab-bz-gt
+        envSlug: prod
+        secretsPath: "/"
+        recursive: false
+      credentialsRef:
+        secretName: infisical-machine-identity
+        secretNamespace: infisical-operator
+  managedKubeSecretReferences:
+  - secretName: invidious-postgres-versity-s3
+    secretNamespace: invidious
+    creationPolicy: "Orphan"
+    template:
+      includeAllSecrets: false
+      data:
+        ACCESS_KEY_ID: "{{ .VERSITY_S3_ACCESS_KEY_ID.Value }}"
+        ACCESS_SECRET_KEY: "{{ .VERSITY_S3_SECRET_ACCESS_KEY.Value }}"
+---
+# D-035: Versity GW (posix) on TrueNAS, outside the cluster's failure domain.
+# Plain HTTP until homelab#1953 (TLS); then endpointURL becomes https:// and
+# endpointCA is added. One shared bucket, a prefix per namespace: Barman adds
+# the server name (the Cluster's) under it, so the files land in
+# pgbackups/invidious/invidious-postgres/{base,wals}, readable with `cp` on
+# pool/pg-objects.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: invidious-postgres
+  namespace: invidious
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  retentionPolicy: "30d"
+  configuration:
+    destinationPath: s3://pgbackups/invidious
+    endpointURL: http://192.168.86.176:30157
+    s3Credentials:
+      accessKeyId:
+        name: invidious-postgres-versity-s3
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: invidious-postgres-versity-s3
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+  # The plugin's sidecar in the Postgres pod. Memory limit only (D-022: no
+  # CPU limits); unbounded memory is a node-killer.
+  instanceSidecarConfiguration:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: invidious-postgres
+  namespace: invidious
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    app.kubernetes.io/name: invidious
+    app.kubernetes.io/managed-by: argocd
+spec:
+  instances: 1
+  # argocd-projects#55 AC6: the five non-bootstrap clusters pull the pinned
+  # `standard` image (pgaudit included) from Harbor's cnpg/ project, a
+  # digest-equal crane copy of ghcr.io/cloudnative-pg. PG17, as on PGO: no
+  # major upgrade in this move (#310 out of scope).
+  imageName: harbor.sirddail.net/cnpg/postgresql:17.11-202611020810-standard-trixie@sha256:4d0aac315c4d8c3202252bd06fea83b16951cc57234a7b610eeaa382ff4482d0
+  imagePullSecrets:
+    - name: invidious-postgres-harbor-pull
+  # Crunchy created pgaudit and pg_stat_statements in the database. Without
+  # these the restore fails ("pgaudit must be loaded via
+  # shared_preload_libraries") and the import Job retries forever; setting
+  # them makes CNPG preload both.
+  postgresql:
+    parameters:
+      pgaudit.log: "none"
+      pg_stat_statements.track: "top"
+  # D-036: Longhorn, 3 replicas, Retain, outside nightly-backup. Never
+  # nfs-client (initdb: "data directory has wrong ownership"). The database
+  # is 9.7 MB (2026-11-06); 2Gi is WAL headroom, same as the PGO repo PVC.
+  storage:
+    storageClass: longhorn-cnpg
+    size: 2Gi
+  # From the PGO instance (25m / 300Mi, limit 400Mi), plus room for the
+  # instance manager that shares this container. No CPU limit (D-022).
+  resources:
+    requests:
+      cpu: 25m
+      memory: 300Mi
+    limits:
+      memory: 512Mi
+  bootstrap:
+    initdb:
+      database: invidious
+      owner: invidious
+      import:
+        type: microservice
+        databases:
+          - invidious
+        source:
+          externalCluster: pgo-invidious
+  externalClusters:
+    # The PGO primary, as the app's own role (owner of every object in the
+    # database). Read once at import; removed in PR C with the PGO cluster.
+    - name: pgo-invidious
+      connectionParameters:
+        host: invidious-postgres-primary.invidious.svc
+        user: invidious
+        dbname: invidious
+        sslmode: require
+      password:
+        name: invidious-postgres-pguser-invidious
+        key: password
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: invidious-postgres
+  # NOT spec.monitoring.enablePodMonitor: deprecated in 1.30.1, and its
+  # PodMonitor has no `release: prometheus`, so this Prometheus never selects
+  # it (#310 AC3). The PodMonitor below is the real one.
+---
+# Nightly full base backup (Barman Cloud has no incrementals; WAL archiving
+# covers the time in between). Six-field cron, seconds first, UTC.
+# `immediate: true`: CNPGBackupStale treats "never backed up" as stale and
+# fires after 1h, so the first backup is taken as soon as the Cluster is up.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: invidious-postgres-nightly
+  namespace: invidious
+spec:
+  schedule: "0 30 2 * * *"
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: invidious-postgres
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+---
+# Scrapes the CNPG instance manager's metrics port (:9187), read by the
+# homelab_cnpg_backup rules in dvystrcil/prometheus values.yaml.
+# The `release: prometheus` label is LOAD-BEARING (homelab#1293): without it
+# CNPGExporterNotScraped fires and every other CNPG rule is blind.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: invidious-postgres-cnpg
+  namespace: invidious
+  labels:
+    app.kubernetes.io/managed-by: argocd
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: invidious-postgres
+      cnpg.io/podRole: instance
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
