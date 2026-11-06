@@ -42,6 +42,10 @@ spec:
   # Every 15 minutes. RefreshChannelsJob polls YouTube roughly that often, so
   # a shorter interval would mostly refresh views that nothing has changed.
   schedule: "*/15 * * * *"
+  # Suspended during the CNPG import (argocd-projects#310 AC4, PR A): it
+  # refreshes the subscriptions_* materialized views, i.e. it writes. PR B
+  # resumes it against invidious-postgres-app.
+  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3

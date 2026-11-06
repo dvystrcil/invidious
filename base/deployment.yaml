@@ -24,7 +24,10 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
-  replicas: 1
+  # 0 during the CNPG import (argocd-projects#310 AC4, PR A): pg_dump copies
+  # the database as it is at that moment, so writes must stop first. PR B
+  # sets this back to 1 once the app points at invidious-postgres-app.
+  replicas: 0
   selector:
     matchLabels:
       app: invidious
