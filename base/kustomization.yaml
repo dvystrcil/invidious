@@ -1,5 +1,6 @@
 resources:
   - namespace.yaml
+  - invidious-postgres-harbor-pull-infisical-secret.yaml
   - postgres.yaml
   - podmonitor.yaml
   - infisical-secret.yaml

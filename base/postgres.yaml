@@ -182,8 +182,15 @@ metadata:
     app.kubernetes.io/name: invidious
     app.kubernetes.io/managed-by: argocd
 spec:
-  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi9-17.6-2542
+  image: harbor.sirddail.net/crunchy/crunchy-postgres:ubi9-17.6-2542
   postgresVersion: 17
+  # argocd-projects#55: every Crunchy image is pulled from the private Harbor
+  # project `crunchy` (byte-identical crane copies of the upstream digests),
+  # because the Developer Program registry stops updating on 2026-12-31 and
+  # has deleted tags before. All four image fields (postgres, pgbouncer,
+  # pgbackrest, exporter) keep their upstream tags; only the registry changed.
+  imagePullSecrets:
+    - name: invidious-postgres-harbor-pull
   # homelab#433 AC6 / architecture/patroni-failsafe.md. Patroni's DCS is the
   # Kubernetes API; with defaults a leader that loses it for ~10 s demotes to
   # read-only (the 2026-07-10 n8n outage). This cluster has one member, so
@@ -239,7 +246,7 @@ spec:
             storage: 5Gi
   proxy:
     pgBouncer:
-      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbouncer:ubi9-1.24-2542
+      image: harbor.sirddail.net/crunchy/crunchy-pgbouncer:ubi9-1.24-2542
       replicas: 1
       config:
         global:
@@ -254,6 +261,7 @@ spec:
           memory: 192Mi
   backups:
     pgbackrest:
+      image: harbor.sirddail.net/crunchy/crunchy-pgbackrest:ubi9-2.56.0-2542
       # The sanctioned "take a backup now" lever:
       #
       #   kubectl annotate postgrescluster/invidious-postgres -n invidious \
@@ -315,6 +323,7 @@ spec:
   monitoring:
     pgmonitor:
       exporter:
+        image: harbor.sirddail.net/crunchy/crunchy-postgres-exporter:ubi9-0.17.1-2542
         resources:
           requests:
             cpu: 10m
