@@ -6,7 +6,7 @@ Self-hosted [Invidious](https://github.com/iv-org/invidious) — a privacy-frien
 
 ## Layout
 
-- `base/` — namespace, Postgres (Crunchy PGO `PostgresCluster`), the `invidious` and `invidious-companion` Deployments/Services, VPAs, and the Infisical-sourced secrets.
+- `base/` — namespace, Postgres (CloudNativePG `Cluster` with Barman Cloud backups to Versity, `base/cnpg.yaml`), the `invidious` and `invidious-companion` Deployments/Services, VPAs, and the Infisical-sourced secrets.
 - `overlays/` — the ArgoCD sync target (`kubectl kustomize overlays/`).
 
 ## Notes

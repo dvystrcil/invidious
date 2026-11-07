@@ -1,13 +1,11 @@
 # CloudNativePG cluster for invidious (argocd-projects#310 AC4, D-034).
 #
-# PR A of the runbook (homelab architecture/cnpg-migration-runbook.md):
-# a CNPG Cluster with the SAME name as the PGO PostgresCluster in
-# postgres.yaml, filled by a logical import (pg_dump/pg_restore) from the PGO
-# primary. The two operators' objects don't collide: PGO owns
-# invidious-postgres-{primary,ha,pgbouncer,...}, CNPG owns
-# invidious-postgres-{rw,ro,r,app}. The app stays scaled to 0 in this PR so
-# the import sees no writes; PR B repoints it at invidious-postgres-app and
-# scales it up; PR C removes the PGO cluster after the soak.
+# Migrated with the runbook (homelab architecture/cnpg-migration-runbook.md):
+# PR A created this Cluster under the PGO PostgresCluster's name and filled it
+# by a logical import from the PGO primary; PR B repointed the app at
+# invidious-postgres-app; PR C removed the PGO cluster after the soak. The
+# pre-migration dump is kept at
+# 192.168.86.176:/mnt/pool/nfs-storage/pgo-backups/invidious-postgres-pre-cnpg-import-20261106-152619.pgdump
 #
 # No Pooler (decided 2026-11-06): one app connection plus a 15-min CronJob,
 # so PgBouncer pools nothing here. PR B points both at the `uri` key (-rw).
@@ -38,6 +36,9 @@ spec:
   managedKubeSecretReferences:
   - secretName: invidious-postgres-versity-s3
     secretNamespace: invidious
+    # Explicit, though it is the CRD default: the live object carries the
+    # defaulted value, and leaving it out kept this CR OutOfSync in ArgoCD.
+    secretType: Opaque
     creationPolicy: "Orphan"
     template:
       includeAllSecrets: false
@@ -136,24 +137,10 @@ spec:
       # Only read at bootstrap; changing it later means a new Cluster.
       localeCollate: en_US.UTF-8
       localeCType: en_US.UTF-8
-      import:
-        type: microservice
-        databases:
-          - invidious
-        source:
-          externalCluster: pgo-invidious
-  externalClusters:
-    # The PGO primary, as the app's own role (owner of every object in the
-    # database). Read once at import; removed in PR C with the PGO cluster.
-    - name: pgo-invidious
-      connectionParameters:
-        host: invidious-postgres-primary.invidious.svc
-        user: invidious
-        dbname: invidious
-        sslmode: require
-      password:
-        name: invidious-postgres-pguser-invidious
-        key: password
+      # The one-time `import` (type microservice) from the PGO primary, and
+      # its `externalClusters` entry, were removed in PR C with the PGO
+      # cluster (#310 AC4). Both are only read at bootstrap; the source
+      # Secret (invidious-postgres-pguser-invidious) went with PGO.
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true
