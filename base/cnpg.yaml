@@ -129,6 +129,13 @@ spec:
     initdb:
       database: invidious
       owner: invidious
+      # Like-for-like with PGO, whose databases are en_US.utf-8 (decided
+      # 2026-11-06, #310 AC4). CNPG's initdb default is C, and the import
+      # does not carry the source's locale: the first import came up C, so
+      # every ORDER BY on text would have sorted by byte (uppercase first).
+      # Only read at bootstrap; changing it later means a new Cluster.
+      localeCollate: en_US.UTF-8
+      localeCType: en_US.UTF-8
       import:
         type: microservice
         databases:
