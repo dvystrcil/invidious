@@ -143,6 +143,11 @@ spec:
       # Secret (invidious-postgres-pguser-invidious) went with PGO.
   plugins:
     - name: barman-cloud.cloudnative-pg.io
+      # Explicit, though it is the CRD default: `plugins` is an atomic list,
+      # so with ServerSideApply ArgoCD predicts the list exactly as written
+      # here, the API server defaults `enabled: true` back in, and the
+      # Cluster shows OutOfSync forever (same cause as `secretType: Opaque`).
+      enabled: true
       isWALArchiver: true
       parameters:
         barmanObjectName: invidious-postgres
