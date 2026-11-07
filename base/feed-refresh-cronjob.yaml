@@ -42,10 +42,6 @@ spec:
   # Every 15 minutes. RefreshChannelsJob polls YouTube roughly that often, so
   # a shorter interval would mostly refresh views that nothing has changed.
   schedule: "*/15 * * * *"
-  # Suspended during the CNPG import (argocd-projects#310 AC4, PR A): it
-  # refreshes the subscriptions_* materialized views, i.e. it writes. PR B
-  # resumes it against invidious-postgres-app.
-  suspend: true
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
@@ -74,13 +70,15 @@ spec:
                 capabilities:
                   drop: ["ALL"]
               env:
-                # PGO publishes a ready-made connection URI. Using it rather
-                # than assembling host/user/password by hand means a rotation
-                # or a failover cannot leave this holding a stale fragment.
+                # The operator publishes a ready-made connection URI (CNPG's
+                # invidious-postgres-app since argocd-projects#310 AC4). Using
+                # it rather than assembling host/user/password by hand means a
+                # rotation or a failover cannot leave this holding a stale
+                # fragment.
                 - name: PGURI
                   valueFrom:
                     secretKeyRef:
-                      name: invidious-postgres-pguser-invidious
+                      name: invidious-postgres-app
                       key: uri
               command: ["/bin/sh", "-c"]
               args:
