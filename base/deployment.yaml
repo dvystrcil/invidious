@@ -24,10 +24,7 @@ metadata:
   annotations:
     reloader.stakater.com/auto: "true"
 spec:
-  # 0 during the CNPG import (argocd-projects#310 AC4, PR A): pg_dump copies
-  # the database as it is at that moment, so writes must stop first. PR B
-  # sets this back to 1 once the app points at invidious-postgres-app.
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app: invidious
@@ -61,8 +58,11 @@ spec:
             - name: INVIDIOUS_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: invidious-postgres-pguser-invidious
-                  key: pgbouncer-uri
+                  # CNPG (argocd-projects#310 AC4, PR B): straight to
+                  # invidious-postgres-rw. No Pooler: one connection, and
+                  # the app keeps its own pool.
+                  name: invidious-postgres-app
+                  key: uri
             - name: INVIDIOUS_HMAC_KEY
               valueFrom:
                 secretKeyRef:
