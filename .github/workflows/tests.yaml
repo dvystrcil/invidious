@@ -1,0 +1,36 @@
+name: tests
+# Repo-level tests (tests/): today the CNPG placement guard (homelab#2075).
+# kustomize-validate's kubeconform skips Cluster, so nothing else checks it.
+# Same shape as dvystrcil/harbor's tests.yaml; ubuntu-latest like validate.yaml
+# (this repo has no ARC runner).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'base/**'
+      - 'overlays/**'
+      - 'tests/**'
+      - '.github/workflows/tests.yaml'
+  pull_request:
+    paths:
+      - 'base/**'
+      - 'overlays/**'
+      - 'tests/**'
+      - '.github/workflows/tests.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Run repo tests
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml 2>/dev/null || pip install --quiet --break-system-packages pyyaml
+          kubectl version --client
+          python3 -m unittest discover -s tests -t . -p 'test_*.py' -v 2>&1 | tee tests.out
+          # Completion marker: a crash before the summary must not read green.
+          grep -q '^OK$' tests.out
+          if grep -q 'skipped' tests.out; then echo "a test was skipped"; exit 1; fi

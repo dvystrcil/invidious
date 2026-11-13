@@ -97,6 +97,23 @@ metadata:
     app.kubernetes.io/managed-by: argocd
 spec:
   instances: 1
+  # homelab#2075: CORE side of the Deco backhaul, off control planes. The
+  # only client, invidious, runs on a CORE worker; the primary sat on
+  # k8s-node-hpm-01 (MAIN, alone across the Wi-Fi backhaul), so every query
+  # crossed it. Same shape as n8n-workflow#352 plus the audited
+  # homelab/segment label; leaves node-01/node-02. longhorn-cnpg is
+  # dataLocality: disabled, so the volume follows the pod. A change here
+  # restarts the single instance (~1 min outage): merging is the trigger.
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: homelab/segment
+                operator: In
+                values: ["core"]
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
   # argocd-projects#55 AC6: the five non-bootstrap clusters pull the pinned
   # `standard` image (pgaudit included) from Harbor's cnpg/ project, a
   # digest-equal crane copy of ghcr.io/cloudnative-pg. PG17, as on PGO: no
