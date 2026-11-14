@@ -2,4 +2,4 @@ resources:
   - ../base
 images:
   - name: quay.io/invidious/invidious
-    newTag: 2.20261113.0
+    newTag: 2.20261114.0
