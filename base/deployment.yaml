@@ -180,10 +180,10 @@ spec:
             # per MEM_LIMIT_HEADROOM in homelab's bin/vpa-rightsize.py.
             # cpu 100m from a measured 65m peak; no CPU limit, per D-022.
             requests:
-              cpu: 25m
-              memory: 1056Mi
+              cpu: 224m
+              memory: 1251Mi
             limits:
-              memory: 1280Mi
+              memory: 1632Mi
       volumes:
         - name: youtubei-cache
           emptyDir: {}
