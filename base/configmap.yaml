@@ -96,3 +96,13 @@ metadata:
 data:
   HOST: "0.0.0.0"
   PORT: "8282"
+  # Retry googlevideo fetches that fail at the network layer. Works around
+  # iv-org/invidious-companion#397: /videoplayback returns 500 when googlevideo
+  # drops a reused connection ("peer closed connection without sending TLS
+  # close_notify"). Only thrown fetch errors are retried, not HTTP statuses.
+  # TIMES is total attempts and defaults to 1 (no retry), so ENABLED alone does
+  # nothing. MULTIPLIER defaults to 0, which @std/async retry() rejects at
+  # startup, so it must be >= 1.
+  NETWORKING_FETCH_RETRY_ENABLED: "true"
+  NETWORKING_FETCH_RETRY_TIMES: "3"
+  NETWORKING_FETCH_RETRY_DEBOUNCE_MULTIPLIER: "1"
